@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# Database
+backend/data/mc_manager.db
+
+# Logs
+backend/logs/*.log
+
+# Node
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# Environment
+.env
+*.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data directories (don't commit world/mod/backup data)
+backend/data/worlds/
+backend/data/mods/
+backend/data/backups/
+backend/data/server_jars/
