@@ -4,8 +4,6 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    ports:
-      - "6379:6379"
 
   backend:
     build: ./backend
@@ -19,8 +17,7 @@ services:
       - redis
     ports:
       - "8000:8000"
-    # Java needs access to run Minecraft; mount server jars if needed
-    privileged: false
+      - "25565:25565"
 
   celery_worker:
     build: ./backend
@@ -36,7 +33,10 @@ services:
       - backend
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        - NEXT_PUBLIC_API_URL=http://192.168.18.23
     restart: unless-stopped
     env_file:
       - .env
@@ -44,7 +44,5 @@ services:
       - "3000:3000"
     depends_on:
       - backend
-    environment:
-      - NEXT_PUBLIC_API_URL=http://backend:8000
 
 volumes: {}
