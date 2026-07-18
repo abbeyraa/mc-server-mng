@@ -1,16 +1,18 @@
+FROM eclipse-temurin:25-jre AS jre
+
 FROM python:3.12-slim
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    openjdk-21-jre-headless \
-    && rm -rf /var/lib/apt/lists/*
+COPY --from=jre /opt/java/openjdk /opt/java/openjdk
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+ENV JAVA_HOME=/opt/java/openjdk
+ENV PATH=/opt/java/openjdk/bin:$PATH
 ENV PYTHONPATH=/app
 
 EXPOSE 8000

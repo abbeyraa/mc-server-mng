@@ -7,6 +7,7 @@ class ServerStatus(BaseModel):
     pid: int | None
     uptime_seconds: float | None
     active_profile: str | None
+    eula_accepted: bool | None = None
 
 
 class ActionResponse(BaseModel):

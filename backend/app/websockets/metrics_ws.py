@@ -21,8 +21,8 @@ async def metrics_endpoint(websocket: WebSocket, token: str):
     await websocket.accept()
     try:
         while True:
-            metrics = get_metrics()
             status_info = server_controller.get_status()
+            metrics = get_metrics(status_info["pid"])
             payload = {**metrics, **status_info}
             await websocket.send_text(json.dumps(payload))
             await asyncio.sleep(2)

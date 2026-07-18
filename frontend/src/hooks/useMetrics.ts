@@ -10,6 +10,9 @@ export interface Metrics {
   disk_used_gb: number;
   disk_total_gb: number;
   disk_percent: number;
+  server_cpu_percent: number | null;
+  server_ram_mb: number | null;
+  server_pid: number | null;
   status: string;
   pid: number | null;
   uptime_seconds: number | null;

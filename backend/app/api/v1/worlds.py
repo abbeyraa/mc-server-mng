@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.api.deps import require_role, get_current_user
+from app.models.profile import ServerProfile
 from app.models.user import User
 from app.schemas.world import WorldInfo, WorldSelectRequest
 from app.services import world_service, profile_service
@@ -10,9 +12,18 @@ from app.services import world_service, profile_service
 router = APIRouter(prefix="/worlds", tags=["worlds"])
 
 
+async def _get_active_profile(db: AsyncSession) -> ServerProfile | None:
+    result = await db.execute(select(ServerProfile).where(ServerProfile.is_active == True))
+    return result.scalar_one_or_none()
+
+
 @router.get("", response_model=list[WorldInfo])
-async def list_worlds(_: User = Depends(get_current_user)):
-    return world_service.list_worlds()
+async def list_worlds(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    active_profile = await _get_active_profile(db)
+    return world_service.list_worlds(active_profile.world_name if active_profile else None)
 
 
 @router.post("/upload")
@@ -52,8 +63,12 @@ async def select_world(
 @router.delete("/{world_name}")
 async def delete_world(
     world_name: str,
+    db: AsyncSession = Depends(get_db),
     _: User = Depends(require_role("admin")),
 ):
+    active_profile = await _get_active_profile(db)
+    if active_profile and active_profile.world_name == world_name:
+        raise HTTPException(status_code=409, detail="Active profile world cannot be deleted")
     try:
         await world_service.delete_world(world_name)
         return {"ok": True}

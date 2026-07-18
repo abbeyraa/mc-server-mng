@@ -1,22 +1,21 @@
 import asyncio
 import json
 import logging
+import os
+import re
 import time
 from asyncio.subprocess import Process
 from enum import Enum
+from pathlib import Path
 from typing import Optional
-
-import psutil
-import redis.asyncio as aioredis
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-REDIS_PID_KEY = "mc:server:pid"
-REDIS_STATUS_KEY = "mc:server:status"
-REDIS_START_TIME_KEY = "mc:server:start_time"
 CONSOLE_QUEUE_MAX = 2000
+DEFAULT_JAVA_BINARY = "java"
+RAM_RE = re.compile(r"^(\d+)\s*([KMGT]?B?)$", re.IGNORECASE)
 
 
 class ServerStatus(str, Enum):
@@ -38,42 +37,76 @@ class ServerController:
         self._watchdog_task: Optional[asyncio.Task] = None
         # All WebSocket console clients subscribe to this queue
         self._log_subscribers: list[asyncio.Queue] = []
-        self._redis: Optional[aioredis.Redis] = None
         self._log_file = open(settings.server_log_path, "a", buffering=1, encoding="utf-8")
-
-    async def _get_redis(self) -> aioredis.Redis:
-        if self._redis is None:
-            self._redis = await aioredis.from_url(settings.REDIS_URL, decode_responses=True)
-        return self._redis
-
-    async def restore_state(self) -> None:
-        """On app startup, check Redis for a running PID and restore state."""
-        try:
-            r = await self._get_redis()
-            pid_str = await r.get(REDIS_PID_KEY)
-            if pid_str and psutil.pid_exists(int(pid_str)):
-                self._status = ServerStatus.RUNNING
-                start_time = await r.get(REDIS_START_TIME_KEY)
-                self._start_time = float(start_time) if start_time else time.time()
-                logger.info(f"Restored running server PID={pid_str}")
-            else:
-                await r.delete(REDIS_PID_KEY)
-                self._status = ServerStatus.STOPPED
-        except Exception as e:
-            logger.warning(f"State restore failed: {e}")
 
     def _build_java_command(self, profile) -> list[str]:
         extra_args = json.loads(profile.java_args) if isinstance(profile.java_args, str) else profile.java_args
         cmd = [
-            "java",
-            f"-Xms{profile.ram_min}",
-            f"-Xmx{profile.ram_max}",
+            self._java_binary(),
+            f"-Xms{self._normalize_ram(profile.ram_min)}",
+            f"-Xmx{self._normalize_ram(profile.ram_max)}",
             *extra_args,
             "-jar",
             str(profile.jar_path),
             "--nogui",
         ]
         return cmd
+
+    def _normalize_ram(self, value: str) -> str:
+        match = RAM_RE.fullmatch(value.strip())
+        if not match:
+            raise RuntimeError(f"Invalid RAM value: {value}. Use 1024M, 4G, or 10G.")
+
+        amount, unit = match.groups()
+        unit = unit.upper()
+        if unit.endswith("B"):
+            unit = unit[:-1]
+        if not unit:
+            unit = "M"
+        return f"{amount}{unit}"
+
+    def _java_binary(self) -> str:
+        explicit_binary = os.environ.get("JAVA_BINARY")
+        if explicit_binary:
+            return explicit_binary
+
+        java_home = os.environ.get("JAVA_HOME")
+        if java_home:
+            java_binary = Path(java_home) / "bin" / "java"
+            if java_binary.exists():
+                return str(java_binary)
+
+        return DEFAULT_JAVA_BINARY
+
+    def eula_path(self, profile) -> Path:
+        return settings.worlds_dir / profile.world_name / "eula.txt"
+
+    def eula_accepted(self, profile) -> bool:
+        path = self.eula_path(profile)
+        if not path.exists():
+            return False
+        return any(line.strip().lower() == "eula=true" for line in path.read_text(encoding="utf-8", errors="replace").splitlines())
+
+    def accept_eula(self, profile) -> Path:
+        path = self.eula_path(profile)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("eula=true\n", encoding="utf-8")
+        return path
+
+    async def _java_version_line(self, java_binary: str) -> str:
+        try:
+            process = await asyncio.create_subprocess_exec(
+                java_binary,
+                "-version",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+            output, _ = await process.communicate()
+        except Exception as exc:
+            return f"unable to read Java version from {java_binary}: {exc}"
+
+        first_line = output.decode("utf-8", errors="replace").splitlines()
+        return first_line[0] if first_line else f"{java_binary} -version returned no output"
 
     async def start(self, profile) -> None:
         async with self._lock:
@@ -83,9 +116,25 @@ class ServerController:
             self._status = ServerStatus.STARTING
             self._active_profile_name = profile.name
             cmd = self._build_java_command(profile)
+            jar_path = Path(profile.jar_path)
+            if not jar_path.exists():
+                self._process = None
+                self._status = ServerStatus.STOPPED
+                self._start_time = None
+                self._active_profile_name = None
+                raise RuntimeError(f"Server jar not found: {jar_path}")
+            if not self.eula_accepted(profile):
+                self._process = None
+                self._status = ServerStatus.STOPPED
+                self._start_time = None
+                self._active_profile_name = None
+                raise RuntimeError(f"Minecraft EULA not accepted. Click Accept EULA for world '{profile.world_name}' first.")
+            await self._broadcast_log(f"[manager] Java runtime: {await self._java_version_line(cmd[0])}\n")
+            await self._broadcast_log(f"[manager] Java binary: {cmd[0]}\n")
 
             try:
                 world_dir = settings.worlds_dir / profile.world_name
+                world_dir.mkdir(parents=True, exist_ok=True)
                 self._process = await asyncio.create_subprocess_exec(
                     *cmd,
                     stdin=asyncio.subprocess.PIPE,
@@ -94,15 +143,14 @@ class ServerController:
                     cwd=str(world_dir),
                 )
             except Exception as e:
+                self._process = None
                 self._status = ServerStatus.STOPPED
+                self._start_time = None
+                self._active_profile_name = None
                 raise RuntimeError(f"Failed to start server: {e}")
 
             pid = self._process.pid
             self._start_time = time.time()
-
-            r = await self._get_redis()
-            await r.set(REDIS_PID_KEY, str(pid))
-            await r.set(REDIS_START_TIME_KEY, str(self._start_time))
 
             self._status = ServerStatus.RUNNING
             self._stdout_task = asyncio.create_task(self._read_stdout())
@@ -147,9 +195,7 @@ class ServerController:
         self._process = None
         self._status = ServerStatus.STOPPED
         self._start_time = None
-        r = await self._get_redis()
-        await r.delete(REDIS_PID_KEY)
-        await r.delete(REDIS_START_TIME_KEY)
+        self._active_profile_name = None
 
     async def restart(self, profile) -> None:
         await self.stop()
@@ -157,12 +203,33 @@ class ServerController:
         await self.start(profile)
 
     async def send_command(self, command: str) -> None:
+        command = self._normalize_command(command)
         if self._process and self._process.stdin:
             line = f"{command}\n".encode()
             self._process.stdin.write(line)
             await self._process.stdin.drain()
         else:
             raise RuntimeError("Server not running or stdin unavailable")
+
+    def _normalize_command(self, command: str) -> str:
+        command = command.strip()
+        if command.startswith("/"):
+            command = command[1:].strip()
+
+        lower_command = command.lower()
+        time_aliases = {
+            "day": "time set day",
+            "night": "time set night",
+            "noon": "time set noon",
+            "midnight": "time set midnight",
+        }
+        if lower_command in time_aliases:
+            return time_aliases[lower_command]
+
+        if lower_command.startswith("set time "):
+            return f"time set {command[9:].strip()}"
+
+        return command
 
     def get_status(self) -> dict:
         uptime = (time.time() - self._start_time) if self._start_time else None

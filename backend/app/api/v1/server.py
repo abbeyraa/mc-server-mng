@@ -18,8 +18,13 @@ async def _get_active_profile(db: AsyncSession) -> ServerProfile | None:
 
 
 @router.get("/status", response_model=ServerStatus)
-async def get_status(_: User = Depends(get_current_user)):
-    return ServerStatus(**server_controller.get_status())
+async def get_status(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    status = server_controller.get_status()
+    profile = await _get_active_profile(db)
+    return ServerStatus(**status, eula_accepted=server_controller.eula_accepted(profile) if profile else None)
 
 
 @router.post("/start", response_model=ActionResponse)
@@ -35,6 +40,18 @@ async def start_server(
         return ActionResponse(ok=True, message="Server started")
     except RuntimeError as e:
         raise HTTPException(status_code=409, detail=str(e))
+
+
+@router.post("/eula", response_model=ActionResponse)
+async def accept_eula(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_role("manager")),
+):
+    profile = await _get_active_profile(db)
+    if not profile:
+        raise HTTPException(status_code=400, detail="No active profile. Activate a profile first.")
+    path = server_controller.accept_eula(profile)
+    return ActionResponse(ok=True, message=f"EULA accepted at {path}")
 
 
 @router.post("/stop", response_model=ActionResponse)

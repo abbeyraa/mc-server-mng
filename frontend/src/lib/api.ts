@@ -1,4 +1,4 @@
-import axios from "axios";
+import axios, { type AxiosProgressEvent } from "axios";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -33,8 +33,16 @@ export const authApi = {
 export const serverApi = {
   status: () => api.get("/server/status"),
   start: () => api.post("/server/start"),
+  acceptEula: () => api.post("/server/eula"),
   stop: () => api.post("/server/stop"),
   restart: () => api.post("/server/restart"),
+};
+
+export const playitApi = {
+  get: () => api.get("/playit"),
+  update: (domain: string) => api.put("/playit", { domain }),
+  attach: () => api.post("/playit/attach"),
+  detach: () => api.delete("/playit/attach"),
 };
 
 export const profilesApi = {
@@ -43,6 +51,21 @@ export const profilesApi = {
   update: (id: number, data: unknown) => api.put(`/profiles/${id}`, data),
   remove: (id: number) => api.delete(`/profiles/${id}`),
   activate: (id: number) => api.post(`/profiles/${id}/activate`),
+};
+
+export const jarsApi = {
+  list: () => api.get("/jars"),
+  upload: (file: File, onUploadProgress?: (event: AxiosProgressEvent) => void) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return api.post("/jars/upload", fd, { onUploadProgress });
+  },
+  uploadBatch: (files: File[], onUploadProgress?: (event: AxiosProgressEvent) => void) => {
+    const fd = new FormData();
+    files.forEach((file) => fd.append("files", file));
+    return api.post("/jars/upload-batch", fd, { onUploadProgress });
+  },
+  remove: (filename: string) => api.delete(`/jars/${filename}`),
 };
 
 export const worldsApi = {

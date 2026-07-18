@@ -8,7 +8,6 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 
     DATABASE_URL: str = "sqlite+aiosqlite:///./data/mc_manager.db"
-    REDIS_URL: str = "redis://localhost:6379/0"
 
     DATA_DIR: Path = Path("./data")
     LOGS_DIR: Path = Path("./logs")
@@ -44,6 +43,7 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+        extra = "ignore"
 
 
 settings = Settings()

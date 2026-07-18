@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1 import auth, server, profiles, worlds, mods, monitoring, console, backup
+from app.api.v1 import auth, server, profiles, worlds, mods, monitoring, console, backup, jars, playit
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -12,3 +12,5 @@ api_router.include_router(mods.router)
 api_router.include_router(monitoring.router)
 api_router.include_router(console.router)
 api_router.include_router(backup.router)
+api_router.include_router(jars.router)
+api_router.include_router(playit.router)

@@ -8,9 +8,8 @@ from app.core.config import settings
 from app.core.database import init_db
 from app.core.logging_config import configure_logging
 from app.api.v1.router import api_router
-from app.websockets.console_ws import console_endpoint
+from app.websockets.console_ws import console_endpoint, playit_console_endpoint
 from app.websockets.metrics_ws import metrics_endpoint
-from app.services.server_controller import server_controller
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -24,7 +23,7 @@ async def lifespan(app: FastAPI):
 
     await init_db()
     await _seed_admin()
-    await server_controller.restore_state()
+    await _seed_playit_settings()
     logger.info("Application started")
     yield
     logger.info("Application shutting down")
@@ -50,6 +49,21 @@ async def _seed_admin() -> None:
             logger.info(f"Admin user '{settings.ADMIN_USERNAME}' created")
 
 
+async def _seed_playit_settings() -> None:
+    from sqlalchemy import select
+    from app.api.v1.playit import DEFAULT_PLAYIT_DOMAIN, PLAYIT_SETTINGS_ID
+    from app.core.database import AsyncSessionLocal
+    from app.models.playit import PlayitSettings
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(PlayitSettings).where(PlayitSettings.id == PLAYIT_SETTINGS_ID))
+        existing = result.scalar_one_or_none()
+        if not existing:
+            db.add(PlayitSettings(id=PLAYIT_SETTINGS_ID, domain=DEFAULT_PLAYIT_DOMAIN))
+            await db.commit()
+            logger.info("Playit settings seeded")
+
+
 app = FastAPI(title="MC Server Manager", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
@@ -66,6 +80,11 @@ app.include_router(api_router)
 @app.websocket("/ws/console")
 async def ws_console(websocket: WebSocket, token: str = Query(...)):
     await console_endpoint(websocket, token)
+
+
+@app.websocket("/ws/playit-console")
+async def ws_playit_console(websocket: WebSocket, token: str = Query(...)):
+    await playit_console_endpoint(websocket, token)
 
 
 @app.websocket("/ws/metrics")

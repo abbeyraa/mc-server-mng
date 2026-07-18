@@ -18,5 +18,5 @@ async def get_db() -> AsyncSession:
 
 async def init_db() -> None:
     async with engine.begin() as conn:
-        from app.models import user, profile, backup  # noqa: F401 — register models
+        from app.models import user, profile, backup, playit  # noqa: F401 — register models
         await conn.run_sync(Base.metadata.create_all)

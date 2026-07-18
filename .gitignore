@@ -33,3 +33,5 @@ backend/data/worlds/
 backend/data/mods/
 backend/data/backups/
 backend/data/server_jars/
+AGENTS.md
+CLAUDE.md

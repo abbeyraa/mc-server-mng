@@ -1,11 +1,6 @@
-version: "3.9"
-
 services:
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-
   backend:
+    container_name: mc-server-mng-backend
     build: ./backend
     restart: unless-stopped
     env_file:
@@ -13,35 +8,24 @@ services:
     volumes:
       - ./backend/data:/app/data
       - ./backend/logs:/app/logs
-    depends_on:
-      - redis
+      - /opt/playit:/opt/playit:ro
+      - /run/playit:/host/run/playit:ro
     ports:
-      - "8000:8000"
-      - "25565:25565"
-
-  celery_worker:
-    build: ./backend
-    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=2
-    restart: unless-stopped
-    env_file:
-      - .env
-    volumes:
-      - ./backend/data:/app/data
-      - ./backend/logs:/app/logs
-    depends_on:
-      - redis
-      - backend
+      - "${BACKEND_PORT:-8000}:8000"
+      - "${MINECRAFT_PORT:-25565}:25565"
 
   frontend:
+    container_name: mc-server-mng-frontend
     build:
       context: ./frontend
       args:
-        - NEXT_PUBLIC_API_URL=http://192.168.18.23
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     restart: unless-stopped
-    env_file:
-      - .env
+    environment:
+      HOSTNAME: 0.0.0.0
+      PORT: 3000
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-3000}:3000"
     depends_on:
       - backend
 

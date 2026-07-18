@@ -1,9 +1,11 @@
 import json
 import logging
+from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.models.profile import ServerProfile
 from app.schemas.profile import ProfileCreate, ProfileUpdate
 
@@ -26,6 +28,9 @@ async def create_profile(db: AsyncSession, data: ProfileCreate) -> ServerProfile
         java_args=json.dumps(data.java_args),
     )
     db.add(profile)
+    await db.flush()
+    if not profile.mods_path:
+        profile.mods_path = str(settings.mods_dir / f"profile-{profile.id}")
     await db.commit()
     await db.refresh(profile)
     return profile
@@ -47,6 +52,8 @@ async def delete_profile(db: AsyncSession, profile_id: int) -> None:
     profile = await get_profile(db, profile_id)
     if not profile:
         raise ValueError(f"Profile {profile_id} not found")
+    if profile.is_active and Path(profile.jar_path).exists():
+        raise RuntimeError("Active profile cannot be deleted")
     await db.delete(profile)
     await db.commit()
 
