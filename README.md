@@ -51,7 +51,7 @@ Persistent files:
 ### 1. Clone
 
 ```bash
-git clone https://github.com/<your-org>/mc-server-mng.git
+git clone https://github.com/abbeyraa/mc-server-mng.git
 cd mc-server-mng
 ```
 
@@ -191,6 +191,21 @@ WebSocket endpoints:
 ├── docker-compose.yml
 └── .env.example
 ```
+
+## Roadmap / Future Updates
+
+- Modpack installer for CurseForge, Modrinth, and ZIP-based packs
+- Automatic server jar downloader for Vanilla, Paper, Fabric, Forge, and Quilt
+- Scheduled backups with retention rules
+- Backup upload to S3-compatible storage, Google Drive, or another remote target
+- Player management tools for whitelist, ban list, ops, and online player actions
+- Resource usage alerts for high CPU, high memory, crashes, and disk space
+- Multi-server support from one dashboard
+- Server event log with audit trail for admin actions
+- Plugin management for Paper/Spigot servers
+- Safer role management UI for admin, manager, and read-only users
+- One-click world import/export with metadata preview
+- Automatic crash report detection and readable crash summaries
 
 ## Security Notes
 
