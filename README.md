@@ -202,4 +202,4 @@ WebSocket endpoints:
 
 ## License
 
-No license file is included yet. Add one before publishing if you want others to use, modify, or redistribute the project.
+Licensed under the Apache License 2.0. See [LICENSE](LICENSE).
